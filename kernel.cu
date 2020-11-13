@@ -104,6 +104,40 @@ __global__ void matrix_product_Kernel(float* ans, float* matrixA, float* matrixB
 
     }
 }
+__global__ void smatrix_product_Kernel(float* ans, float* matrixA, float* matrixB) {
+    int x = threadIdx.x;
+    int y = blockIdx.x;
+    int ma = DATA_WIDTH_S;
+    for (int i = y; i+8 < ma; i+=8) {
+        __shared__ float row[DATA_WIDTH_S];
+        int tmp = x;
+        while (tmp < DATA_WIDTH_S) {
+            row[tmp] = matrixA[i * ma + tmp];
+            tmp += 256;
+        }
+        __syncthreads();
+        for (int j = x; j< ma;j += 256) {
+            int a = i * ma + j;
+            ans[a] = 0;
+            for (int k = 0; k + 9 < ma; k += 10) {
+                int b =  k; int c = k * ma + j;
+                float answer = 0;
+                answer += row[b++] * matrixB[c];
+                answer += row[b++] * matrixB[c += ma];
+                answer += row[b++] * matrixB[c += ma];
+                answer += row[b++] * matrixB[c += ma];
+                answer += row[b++] * matrixB[c += ma];
+                answer += row[b++] * matrixB[c += ma];
+                answer += row[b++] * matrixB[c += ma];
+                answer += row[b++] * matrixB[c += ma];
+                answer += row[b++] * matrixB[c += ma];
+                answer += row[b++] * matrixB[c += ma];
+                ans[a] += answer;
+            }
+        }
+
+    }
+}
 __global__ void warmup()
 {
     /*预热GPU，调用一个空的核函数*/
@@ -260,12 +294,7 @@ int main()
         cout << endl;*/
         cout << GREEN << "Calculating by [CUDA+Strassen]......." << endl;
         cout << RESET;
-        ans=matrix_product_CUDA(Acut, Bcut);
-        cout << BLUE << "Calculate answer (first 10 numbers in answer matrix) : " << endl;
-        for (int j = 0; j < 10; j++) {
-            cout << setw(13) << left << setfill(' ') << ans[0][j] << " ";
-        }
-        cout << RESET;
+        ans = matrix_product_CUDA(Acut,Bcut);
     }
     return 0;
 }
@@ -570,5 +599,64 @@ float** matrix_product_CUDA(float** matrixA, float** matrixB) {
     if (cudaStatus != cudaSuccess) {
         fprintf(stderr, "cudaMemcpy failed!");
     }
+    cout << BLUE << "Calculate answer (first 10 numbers in answer matrix) : " << endl;
+    for (int j = 0; j < 10; j++) {
+        cout << setw(13) << left << setfill(' ') << ans[0][j] << " ";
+    }
+    cout << RESET;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start, 0);
+    {
+        matrix_minus_Kernel << <8, 256 >> > (S1, dev_B1, dev_B4);
+        matrix_add_Kernel << <8, 256 >> > (S2, dev_A1, dev_A2);
+        matrix_add_Kernel << <8, 256 >> > (S3, dev_A3, dev_A4);
+        matrix_minus_Kernel << <8, 256 >> > (S4, dev_B3, dev_B1);
+        matrix_add_Kernel << <8, 256 >> > (S5, dev_A1, dev_A4);
+        matrix_add_Kernel << <8, 256 >> > (S6, dev_B1, dev_B4);
+        matrix_minus_Kernel << <8, 256 >> > (S7, dev_A2, dev_A4);
+        matrix_add_Kernel << <8, 256 >> > (S8, dev_B3, dev_B4);
+        matrix_minus_Kernel << <8, 256 >> > (S9, dev_A1, dev_A3);
+        matrix_add_Kernel << <8, 256 >> > (S10, dev_B1, dev_B2);
+        cudaDeviceSynchronize();
+        cout << "S part finished" << endl;
+        smatrix_product_Kernel << <8, 256 >> > (P1, dev_A1, S1);
+        smatrix_product_Kernel << <8, 256 >> > (P2, S2, dev_B4);
+        smatrix_product_Kernel << <8, 256 >> > (P3, S3, dev_B1);
+        smatrix_product_Kernel << <8, 256 >> > (P4, dev_A4, S4);
+        smatrix_product_Kernel << <8, 256 >> > (P5, S5, S6);
+        smatrix_product_Kernel << <8, 256 >> > (P6, S7, S8);
+        smatrix_product_Kernel << <8, 256 >> > (P7, S9, S10);
+        cudaDeviceSynchronize();
+        cout << "P part finished" << endl;
+        matrix_add_Kernel << <8, 256 >> > (S5, P5, P4);
+        matrix_minus_Kernel << <8, 256 >> > (S6, P2, P6);
+        matrix_add_Kernel << <8, 256 >> > (S7, P5, P1);
+        matrix_add_Kernel << <8, 256 >> > (S8, P3, P7);
+        cudaDeviceSynchronize();
+        matrix_minus_Kernel << <8, 256 >> > (S1, S5, S6);
+        matrix_add_Kernel << <8, 256 >> > (S2, P1, P2);
+        matrix_add_Kernel << <8, 256 >> > (S3, P3, P4);
+        matrix_minus_Kernel << <8, 256 >> > (S4, S7, S8);
+        cout << "C part finished" << endl;
+    }
+    cudaEventRecord(stop, 0);
+    cudaEventSynchronize(start);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&costtime, start, stop);
+    cudaStatus = cudaMemcpy(ans0, S1, length, cudaMemcpyDeviceToHost);
+    cudaStatus = cudaMemcpy(ans1, S2, length, cudaMemcpyDeviceToHost);
+    cudaStatus = cudaMemcpy(ans2, S3, length, cudaMemcpyDeviceToHost);
+    cudaStatus = cudaMemcpy(ans3, S4, length, cudaMemcpyDeviceToHost);
+    ans[0] = ans0;
+    ans[1] = ans1;
+    ans[2] = ans1;
+    ans[3] = ans3;
+    cout << "Calculate time for [CUDA+Strassen+Shared Memory] : " << costtime / (1000 * 60) << " Minutes" << endl;
+    cout << BLUE << "Calculate answer (first 10 numbers in answer matrix) : " << endl;
+    for (int j = 0; j < 10; j++) {
+        cout << setw(13) << left << setfill(' ') << ans[0][j] << " ";
+    }
+    cout << RESET;
     return ans;
 }

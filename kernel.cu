@@ -19,7 +19,7 @@
 int GPU_CLOCK_RATE;
 using namespace std;
 clock_t start, v1, v2, v3, finish;
-int readIn(float* matrixA,float* matrixB);                      //从指定路径读取指定二进制文件，必须提前准备好
+int readIn(float* matrixA,float* matrixB);                      //浠庢寚瀹氳矾寰勮鍙栨寚瀹氫簩杩涘埗鏂囦欢锛屽繀椤绘彁鍓嶅噯澶囧ソ
 float* matrix_product_v1(float* matrixA, float* matrixB, int ma, int na, int mb, int nb);
 float** matrix_product_v2(float** matrixA, float** matrixB);
 float** matrix_product_CUDA(float** matrixA, float** matrixB);
@@ -140,7 +140,7 @@ __global__ void smatrix_product_Kernel(float* ans, float* matrixA, float* matrix
 }
 __global__ void warmup()
 {
-    /*预热GPU，调用一个空的核函数*/
+    /*棰勭儹GPU锛岃皟鐢ㄤ竴涓┖鐨勬牳鍑芥暟*/
 }
 void printDeviceProp(const cudaDeviceProp& prop)
 {
@@ -265,12 +265,12 @@ int main()
         cout << GREEN << "Reading data from disk.....Please wait\n";
         cout << RESET;
         readIn(matrixA,matrixB);
-        //读入数据
+        //璇诲叆鏁版嵁
         float** ans;
         start = clock();
         cout << GREEN << "Calculating in brute Force....." << RED << "WARNING:This will take a long time!" << endl;
         cout << RESET;
-        /*float* ans1 = matrix_product_v1(matrixA, matrixB, DATA_WIDTH, DATA_WIDTH, DATA_WIDTH, DATA_WIDTH);
+        float* ans1 = matrix_product_v1(matrixA, matrixB, DATA_WIDTH, DATA_WIDTH, DATA_WIDTH, DATA_WIDTH);
         v1 = clock();
         cout << "Calculate time for [brute force in prue CPU] : " << (double)(v1 - start) / (CLOCKS_PER_SEC * 60) <<" Minutes"<< endl;
         cout <<BLUE<< "Calculate answer :\n "<< endl;
@@ -279,10 +279,10 @@ int main()
         }
         cout << RESET;
         cout << endl;
-        cout << "Cores in this computer : " << THREAD_NUM << endl;*/
+        cout << "Cores in this computer : " << THREAD_NUM << endl;
         float** Acut = matrixCut(matrixA);
         float** Bcut = matrixCut(matrixB);
-        /*cout <<GREEN<< "Calculating in [Strassen + multi CPU]....." << endl;
+        cout <<GREEN<< "Calculating in [Strassen + multi CPU]....." << endl;
         cout << RESET;
         ans = matrix_product_v2(Acut,Bcut);
         cout << "Calculate time for [Strassen + multi CPU] : " << (double)(finish - start) / (CLOCKS_PER_SEC*60) <<" Minutes"<< endl;
@@ -291,7 +291,7 @@ int main()
             cout << setw(13) << left << setfill(' ') << ans[0][j] << " ";
         }
         cout << RESET;
-        cout << endl;*/
+        cout << endl;
         cout << GREEN << "Calculating by [CUDA+Strassen]......." << endl;
         cout << RESET;
         ans = matrix_product_CUDA(Acut,Bcut);
